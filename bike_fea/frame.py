@@ -196,6 +196,47 @@ def evaluate(project: FrameProject) -> SolvedFrame:
 
 
 @dataclass(frozen=True)
+class MemberLayout:
+    key: str
+    display: str
+    node_i: str
+    node_j: str
+    reported: bool
+
+
+def member_layout(built: BuiltGeometry) -> list[MemberLayout]:
+    """Member connectivity. When K lies on J, the seatstay shares J's node."""
+    nodes = built.nodes
+    gap = float(np.linalg.norm(nodes["top_tube_junction"] - nodes["seatstay_junction"]))
+    if gap >= MIN_MEMBER_MM:
+        seat_parts = [
+            MemberLayout("seat_tube", "Seat tube", "bb", "seatstay_junction", True),
+            MemberLayout("seat_tube_upper", "Seat tube upper", "seatstay_junction", "top_tube_junction", True),
+        ]
+        seatstay_end = "seatstay_junction"
+    else:
+        seat_parts = [MemberLayout("seat_tube", "Seat tube", "bb", "top_tube_junction", True)]
+        seatstay_end = "top_tube_junction"
+    spacer = float(np.linalg.norm(nodes["steerer_top"] - nodes["head_tube_top"]))
+    stem_start = "steerer_top" if spacer >= MIN_MEMBER_MM else "head_tube_top"
+    items = [
+        *seat_parts,
+        MemberLayout("chainstay", "Chainstay", "rear_axle", "bb", True),
+        MemberLayout("seatstay", "Seatstay", "rear_axle", seatstay_end, True),
+        MemberLayout("seat_tube_extension", "Seat tube extension", "top_tube_junction", "seat_tube_top", True),
+        MemberLayout("seatpost", "Seatpost", "seat_tube_top", "saddle", True),
+        MemberLayout("top_tube", "Top tube", "top_tube_junction", "head_tube_top", True),
+        MemberLayout("down_tube", "Down tube", "bb", "head_tube_bottom", True),
+        MemberLayout("head_tube", "Head tube", "head_tube_bottom", "head_tube_top", True),
+        MemberLayout("fork", "Fork", "head_tube_bottom", "front_axle", True),
+    ]
+    if spacer >= MIN_MEMBER_MM:
+        items.append(MemberLayout("steerer", "Steerer", "head_tube_top", "steerer_top", False))
+    items.append(MemberLayout("stem", "Stem", stem_start, "stem_clamp", False))
+    return items
+
+
+@dataclass(frozen=True)
 class _Link:
     key: str
     display: str
@@ -211,61 +252,6 @@ class _Link:
 def _links(built: BuiltGeometry, project: FrameProject) -> list[_Link]:
     nodes = built.nodes
     modulus = project.material.youngs_modulus
-    links: list[_Link] = []
-
-    def add(
-        key: str,
-        display: str,
-        start: str,
-        end: str,
-        pair: bool,
-        reported: bool,
-        section: TubeSection,
-    ) -> None:
-        length = float(np.linalg.norm(nodes[end] - nodes[start]))
-        if length < MIN_MEMBER_MM:
-            raise ValueError(f"{display} is shorter than {MIN_MEMBER_MM:.0f} mm.")
-        links.append(_Link(key, display, start, end, pair, reported, section, modulus, length))
-
-    def sized(key: str) -> TubeSection:
-        size = project.members[key]
-        return tube_section(size.od, size.wall, key in PAIRS)
-
-    junction_gap = float(np.linalg.norm(nodes["top_tube_junction"] - nodes["seatstay_junction"]))
-    if junction_gap >= MIN_MEMBER_MM:
-        seatstay_end = "seatstay_junction"
-        add("seat_tube", "Seat tube", "bb", "seatstay_junction", False, True, sized("seat_tube"))
-        add(
-            "seat_tube_upper",
-            "Seat tube upper",
-            "seatstay_junction",
-            "top_tube_junction",
-            False,
-            True,
-            sized("seat_tube_upper"),
-        )
-    else:
-        # K lies on J. One node, or the seatstay would hang off an unconnected point.
-        seatstay_end = "top_tube_junction"
-        add("seat_tube", "Seat tube", "bb", "top_tube_junction", False, True, sized("seat_tube"))
-
-    add("chainstay", "Chainstay", "rear_axle", "bb", True, True, sized("chainstay"))
-    add("seatstay", "Seatstay", "rear_axle", seatstay_end, True, True, sized("seatstay"))
-    add(
-        "seat_tube_extension",
-        "Seat tube extension",
-        "top_tube_junction",
-        "seat_tube_top",
-        False,
-        True,
-        sized("seat_tube_extension"),
-    )
-    add("seatpost", "Seatpost", "seat_tube_top", "saddle", False, True, sized("seatpost"))
-    add("top_tube", "Top tube", "top_tube_junction", "head_tube_top", False, True, sized("top_tube"))
-    add("down_tube", "Down tube", "bb", "head_tube_bottom", False, True, sized("down_tube"))
-    add("head_tube", "Head tube", "head_tube_bottom", "head_tube_top", False, True, sized("head_tube"))
-    add("fork", "Fork", "head_tube_bottom", "front_axle", True, True, sized("fork"))
-
     base = tube_section(28.6, 1.6)
     rigid = TubeSection(
         base.od,
@@ -275,12 +261,29 @@ def _links(built: BuiltGeometry, project: FrameProject) -> list[_Link]:
         base.inertia * RIGID_STIFFNESS,
         base.outer_fiber,
     )
-    spacer = float(np.linalg.norm(nodes["steerer_top"] - nodes["head_tube_top"]))
-    stem_start = "head_tube_top"
-    if spacer >= MIN_MEMBER_MM:
-        add("steerer", "Steerer", "head_tube_top", "steerer_top", False, False, rigid)
-        stem_start = "steerer_top"
-    add("stem", "Stem", stem_start, "stem_clamp", False, False, rigid)
+    links: list[_Link] = []
+    for item in member_layout(built):
+        if item.reported:
+            size = project.members[item.key]
+            section = tube_section(size.od, size.wall, item.key in PAIRS)
+        else:
+            section = rigid
+        length = float(np.linalg.norm(nodes[item.node_j] - nodes[item.node_i]))
+        if length < MIN_MEMBER_MM:
+            raise ValueError(f"{item.display} is shorter than {MIN_MEMBER_MM:.0f} mm.")
+        links.append(
+            _Link(
+                item.key,
+                item.display,
+                item.node_i,
+                item.node_j,
+                item.key in PAIRS,
+                item.reported,
+                section,
+                modulus,
+                length,
+            )
+        )
     return links
 
 
