@@ -178,6 +178,19 @@ def build_geometry(geo: FrameGeometry) -> BuiltGeometry:
     return BuiltGeometry(nodes=nodes, derived=derived, warnings=tuple(warnings))
 
 
+def fork_length_for_level_axles(
+    stack: float,
+    bb_drop: float,
+    head_tube_angle: float,
+    head_tube_length: float,
+    fork_rake: float,
+) -> float:
+    """Fork length that puts the front axle on the rear axle height."""
+    hta = np.deg2rad(head_tube_angle)
+    along_axis = (stack - bb_drop + fork_rake * np.cos(hta)) / np.sin(hta)
+    return float(along_axis - head_tube_length)
+
+
 def _require_positive(name: str, value: float) -> None:
     if value <= 0:
         raise GeometryError(f"{name.capitalize()} must be positive.")

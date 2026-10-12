@@ -1,0 +1,73 @@
+# 56 cm road frame in 4130. Load split numbers are percentages and must sum to 100.
+# Fork length is set so the front axle sits on the rear axle height.
+
+load_cases = [
+    { name = "seated bump", mass = 75.0, bump_g = 5.0, saddle = 60.0, bars = 30.0, pedals = 10.0 },
+    { name = "standing bump", mass = 75.0, bump_g = 5.0, saddle = 0.0, bars = 30.0, pedals = 70.0 },
+    { name = "static", mass = 75.0, bump_g = 1.0, saddle = 60.0, bars = 30.0, pedals = 10.0 },
+]
+
+[geometry]
+stack = 565.0
+reach = 390.0
+bb_drop = 70.0
+chainstay = 410.0
+seat_tube_angle = 73.5
+seat_tube_length = 560.0
+seat_tube_ctc = 520.0
+seatstay_drop = 30.0
+saddle_height = 740.0
+head_tube_angle = 73.0
+head_tube_length = 150.0
+fork_length = 381.37530012677803
+fork_rake = 45.0
+wheel_radius = 340.0
+stem_length = 100.0
+stem_angle = -6.0
+spacers = 15.0
+
+[material]
+builtin = "4130"
+
+[members.chainstay]
+od = 22.2
+wall = 0.8
+
+[members.seatstay]
+od = 16.0
+wall = 0.8
+
+[members.seat_tube]
+od = 28.6
+wall = 0.9
+
+[members.seat_tube_upper]
+od = 28.6
+wall = 0.9
+
+[members.seat_tube_extension]
+od = 28.6
+wall = 0.9
+
+[members.seatpost]
+od = 27.2
+wall = 2.0
+
+[members.top_tube]
+od = 28.6
+wall = 0.9
+
+[members.down_tube]
+od = 31.8
+wall = 0.9
+
+[members.head_tube]
+od = 36.0
+wall = 1.2
+
+[members.fork]
+od = 28.0
+wall = 1.0
+
+[settings]
+target_safety_factor = 2.0
