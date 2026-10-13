@@ -6,41 +6,35 @@ Load-split numbers in the file are percentages.
 from __future__ import annotations
 
 import tomllib
-from dataclasses import asdict
+from dataclasses import asdict, fields
 from pathlib import Path
 
 import tomli_w
 
 from bike_fea.frame import MEMBER_CATALOG, FrameProject, MemberSize, default_members
-from bike_fea.geometry import FrameGeometry, fork_length_for_level_axles
+from bike_fea.geometry import FrameGeometry
 from bike_fea.loads import LoadCase
 from bike_fea.materials import BUILTINS, Material
 
-EXAMPLE_PATH = Path(__file__).resolve().parent.parent / "examples" / "road56_steel.toml"
+EXAMPLE_PATH = Path(__file__).resolve().parent.parent / "examples" / "piuma_pace.toml"
 
 
 def example_project() -> FrameProject:
-    """56 cm road frame in 4130 with level axles and three load cases."""
-    stack = 565.0
-    bb_drop = 70.0
-    head_angle = 73.0
-    head_length = 150.0
-    rake = 45.0
+    """Piuma Pace v2 from the Fusion sketch, in 4130, with three load cases."""
     geometry = FrameGeometry(
-        stack=stack,
-        reach=390.0,
-        bb_drop=bb_drop,
-        chainstay=410.0,
-        seat_tube_angle=73.5,
-        seat_tube_length=560.0,
-        seat_tube_ctc=520.0,
-        seatstay_drop=30.0,
-        saddle_height=740.0,
-        head_tube_angle=head_angle,
-        head_tube_length=head_length,
-        fork_length=fork_length_for_level_axles(stack, bb_drop, head_angle, head_length, rake),
-        fork_rake=rake,
-        wheel_radius=340.0,
+        wheel_diameter=700.0,
+        axle_to_crown=382.0,
+        fork_offset=47.0,
+        head_tube_angle=70.0,
+        head_tube=95.0,
+        bb_drop=80.0,
+        seat_tube_angle=76.0,
+        seat_tube=500.0,
+        top_tube=530.0,
+        chainstay=420.0,
+        saddle_height=690.0,
+        seatstay_drop=0.0,
+        seat_tube_extension=0.0,
         stem_length=100.0,
         stem_angle=-6.0,
         spacers=15.0,
@@ -103,6 +97,10 @@ def project_to_dict(project: FrameProject) -> dict:
 
 def project_from_dict(data: dict) -> FrameProject:
     try:
+        known = {field.name for field in fields(FrameGeometry)}
+        unknown = sorted(set(data["geometry"]) - known)
+        if unknown:
+            raise ValueError(f"Unknown geometry parameters: {', '.join(unknown)}.")
         geometry = FrameGeometry(**{key: float(value) for key, value in data["geometry"].items()})
         material = _material(data["material"])
         members = {

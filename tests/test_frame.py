@@ -1,4 +1,5 @@
 import math
+from dataclasses import replace
 
 import pytest
 
@@ -9,10 +10,14 @@ from bike_fea.sizing import safety_factor
 from tests.test_geometry import vertical_frame
 
 
-def _project(bump_g: float = 5.0, material=None, drop: float = 0.0, cases=None) -> FrameProject:
-    geometry = vertical_frame() if drop == 0 else vertical_frame().__class__(
-        **{**vertical_frame().__dict__, "seatstay_drop": drop}
-    )
+def _project(
+    bump_g: float = 5.0,
+    material=None,
+    drop: float = 0.0,
+    cases=None,
+    extension: float = 60.0,
+) -> FrameProject:
+    geometry = replace(vertical_frame(), seatstay_drop=drop, seat_tube_extension=extension)
     if cases is None:
         cases = (LoadCase("bump", 75.0, bump_g, 0.6, 0.3, 0.1),)
     return FrameProject(
@@ -60,6 +65,12 @@ def test_dropped_seatstays_split_the_seat_tube():
     dropped = {item.force.key for item in analyze(_project(drop=40.0)).summaries}
     assert "seat_tube_upper" not in level
     assert "seat_tube_upper" in dropped
+
+
+def test_no_extension_starts_the_seatpost_at_the_junction():
+    keys = {item.force.key for item in analyze(_project(extension=0.0)).summaries}
+    assert "seat_tube_extension" not in keys
+    assert "seatpost" in keys
 
 
 def test_compression_allowable_applies_only_when_peak_stress_is_negative():

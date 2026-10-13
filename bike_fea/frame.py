@@ -205,7 +205,11 @@ class MemberLayout:
 
 
 def member_layout(built: BuiltGeometry) -> list[MemberLayout]:
-    """Member connectivity. When K lies on J, the seatstay shares J's node."""
+    """Member connectivity.
+
+    When K lies on J, the seatstay shares J's node. With no seat tube extension,
+    the seatpost starts at J.
+    """
     nodes = built.nodes
     gap = float(np.linalg.norm(nodes["top_tube_junction"] - nodes["seatstay_junction"]))
     if gap >= MIN_MEMBER_MM:
@@ -217,14 +221,21 @@ def member_layout(built: BuiltGeometry) -> list[MemberLayout]:
     else:
         seat_parts = [MemberLayout("seat_tube", "Seat tube", "bb", "top_tube_junction", True)]
         seatstay_end = "top_tube_junction"
+    extension = float(np.linalg.norm(nodes["seat_tube_top"] - nodes["top_tube_junction"]))
+    if extension >= MIN_MEMBER_MM:
+        post_parts = [
+            MemberLayout("seat_tube_extension", "Seat tube extension", "top_tube_junction", "seat_tube_top", True),
+            MemberLayout("seatpost", "Seatpost", "seat_tube_top", "saddle", True),
+        ]
+    else:
+        post_parts = [MemberLayout("seatpost", "Seatpost", "top_tube_junction", "saddle", True)]
     spacer = float(np.linalg.norm(nodes["steerer_top"] - nodes["head_tube_top"]))
     stem_start = "steerer_top" if spacer >= MIN_MEMBER_MM else "head_tube_top"
     items = [
         *seat_parts,
         MemberLayout("chainstay", "Chainstay", "rear_axle", "bb", True),
         MemberLayout("seatstay", "Seatstay", "rear_axle", seatstay_end, True),
-        MemberLayout("seat_tube_extension", "Seat tube extension", "top_tube_junction", "seat_tube_top", True),
-        MemberLayout("seatpost", "Seatpost", "seat_tube_top", "saddle", True),
+        *post_parts,
         MemberLayout("top_tube", "Top tube", "top_tube_junction", "head_tube_top", True),
         MemberLayout("down_tube", "Down tube", "bb", "head_tube_bottom", True),
         MemberLayout("head_tube", "Head tube", "head_tube_bottom", "head_tube_top", True),

@@ -8,73 +8,92 @@ from bike_fea.geometry import FrameGeometry, GeometryError, build_geometry
 
 
 def vertical_frame() -> FrameGeometry:
-    """90 degree seat and head tubes, so the chart numbers are exact."""
+    """90 degree seat and head tubes, so every node is exact by hand."""
     return FrameGeometry(
-        stack=500.0,
-        reach=400.0,
-        bb_drop=70.0,
-        chainstay=400.0,
-        seat_tube_angle=90.0,
-        seat_tube_length=560.0,
-        seat_tube_ctc=500.0,
-        seatstay_drop=0.0,
-        saddle_height=700.0,
+        wheel_diameter=680.0,
+        axle_to_crown=330.0,
+        fork_offset=40.0,
         head_tube_angle=90.0,
-        head_tube_length=100.0,
-        fork_length=330.0,
-        fork_rake=40.0,
-        wheel_radius=340.0,
+        head_tube=100.0,
+        bb_drop=70.0,
+        seat_tube_angle=90.0,
+        seat_tube=500.0,
+        top_tube=400.0,
+        chainstay=400.0,
+        saddle_height=700.0,
+        seatstay_drop=0.0,
+        seat_tube_extension=60.0,
         stem_length=100.0,
         stem_angle=0.0,
         spacers=0.0,
     )
 
 
-def test_vertical_frame_recovers_chart_numbers():
+def piuma_pace() -> FrameGeometry:
+    """User parameters from the Piuma Pace v2 Fusion sketch."""
+    return FrameGeometry(
+        wheel_diameter=700.0,
+        axle_to_crown=382.0,
+        fork_offset=47.0,
+        head_tube_angle=70.0,
+        head_tube=95.0,
+        bb_drop=80.0,
+        seat_tube_angle=76.0,
+        seat_tube=500.0,
+        top_tube=530.0,
+        chainstay=420.0,
+        saddle_height=690.0,
+    )
+
+
+def test_matches_the_fusion_sketch():
+    derived = build_geometry(piuma_pace()).derived
+    assert derived.rear_center == pytest.approx(412.311, abs=0.01)
+    assert derived.front_center == pytest.approx(615.656, abs=0.01)
+    assert derived.bb_height == pytest.approx(270.0)
+
+
+def test_vertical_frame_places_every_node():
     built = build_geometry(vertical_frame())
     rear_x = -math.sqrt(400.0**2 - 70.0**2)
+    derived = built.derived
 
-    assert built.derived.effective_top_tube == pytest.approx(400.0)
-    assert built.derived.front_center == pytest.approx(440.0)
-    assert built.derived.wheelbase == pytest.approx(440.0 - rear_x)
-    assert built.derived.trail == pytest.approx(-40.0)
-    assert built.warnings == ()
+    assert derived.stack == pytest.approx(500.0)
+    assert derived.reach == pytest.approx(400.0)
+    assert derived.effective_top_tube == pytest.approx(400.0)
+    assert derived.front_center == pytest.approx(440.0)
+    assert derived.wheelbase == pytest.approx(440.0 - rear_x)
+    assert derived.trail == pytest.approx(-40.0)
+    assert derived.bb_height == pytest.approx(270.0)
 
-    assert built.nodes["bb"] == pytest.approx([0.0, 0.0])
-    assert built.nodes["top_tube_junction"] == pytest.approx([0.0, 500.0])
-    assert built.nodes["seat_tube_top"] == pytest.approx([0.0, 560.0])
-    assert built.nodes["saddle"] == pytest.approx([0.0, 700.0])
-    assert built.nodes["rear_axle"] == pytest.approx([rear_x, 70.0])
-    assert built.nodes["head_tube_top"] == pytest.approx([400.0, 500.0])
-    assert built.nodes["head_tube_bottom"] == pytest.approx([400.0, 400.0])
-    assert built.nodes["front_axle"] == pytest.approx([440.0, 70.0])
-    assert built.nodes["stem_clamp"] == pytest.approx([500.0, 500.0])
+    nodes = built.nodes
+    assert nodes["top_tube_junction"] == pytest.approx([0.0, 500.0])
+    assert nodes["seat_tube_top"] == pytest.approx([0.0, 560.0])
+    assert nodes["saddle"] == pytest.approx([0.0, 700.0])
+    assert nodes["rear_axle"] == pytest.approx([rear_x, 70.0])
+    assert nodes["head_tube_top"] == pytest.approx([400.0, 500.0])
+    assert nodes["head_tube_bottom"] == pytest.approx([400.0, 400.0])
+    assert nodes["front_axle"] == pytest.approx([440.0, 70.0])
+    assert nodes["stem_clamp"] == pytest.approx([500.0, 500.0])
 
 
-def test_sloping_seat_tube_and_trail():
-    built = build_geometry(
-        replace(
-            vertical_frame(),
-            stack=565.0,
-            reach=390.0,
-            seat_tube_angle=73.5,
-            seat_tube_ctc=520.0,
-            seatstay_drop=40.0,
-            head_tube_angle=73.0,
-            fork_rake=45.0,
-            wheel_radius=340.0,
-        )
-    )
-    sta = math.radians(73.5)
-    ett = 390.0 + 565.0 * math.cos(sta) / math.sin(sta)
-    trail = (340.0 * math.cos(math.radians(73.0)) - 45.0) / math.sin(math.radians(73.0))
-    junction = 520.0 * np.array([-math.cos(sta), math.sin(sta)])
+def test_axles_are_level_and_top_tube_length_holds():
+    geo = piuma_pace()
+    nodes = build_geometry(geo).nodes
+    assert nodes["front_axle"][1] == pytest.approx(nodes["rear_axle"][1])
+    top_tube = np.linalg.norm(nodes["head_tube_top"] - nodes["top_tube_junction"])
+    assert top_tube == pytest.approx(geo.top_tube)
 
-    assert built.derived.effective_top_tube == pytest.approx(ett)
-    assert built.derived.trail == pytest.approx(trail)
-    assert built.derived.trail == pytest.approx(56.8916, abs=1e-3)
-    assert built.nodes["top_tube_junction"] == pytest.approx(junction)
-    assert built.nodes["seatstay_junction"] == pytest.approx(junction - 40.0 * junction / 520.0)
+
+def test_trail_and_dropped_seatstays():
+    geo = replace(piuma_pace(), seatstay_drop=40.0)
+    built = build_geometry(geo)
+    hta = math.radians(70.0)
+    sta = math.radians(76.0)
+    axis = np.array([-math.cos(sta), math.sin(sta)])
+
+    assert built.derived.trail == pytest.approx((350.0 * math.cos(hta) - 47.0) / math.sin(hta))
+    assert built.nodes["seatstay_junction"] == pytest.approx(460.0 * axis)
 
 
 def test_chainstay_shorter_than_bb_drop():
@@ -82,13 +101,11 @@ def test_chainstay_shorter_than_bb_drop():
         build_geometry(replace(vertical_frame(), chainstay=50.0))
 
 
-def test_junction_must_sit_below_seat_tube_top():
-    with pytest.raises(GeometryError, match="center-to-center"):
-        build_geometry(replace(vertical_frame(), seat_tube_ctc=560.0))
+def test_top_tube_too_short_to_reach_head_tube():
+    with pytest.raises(GeometryError, match="cannot reach"):
+        build_geometry(replace(vertical_frame(), seat_tube=100.0, top_tube=200.0))
 
 
-def test_axle_height_mismatch_warns_but_still_places_nodes():
-    built = build_geometry(replace(vertical_frame(), fork_length=300.0))
-    assert built.nodes["front_axle"][1] == pytest.approx(100.0)
-    assert len(built.warnings) == 1
-    assert "axle" in built.warnings[0].lower()
+def test_saddle_must_sit_above_seat_tube_top():
+    with pytest.raises(GeometryError, match="Saddle height"):
+        build_geometry(replace(vertical_frame(), saddle_height=550.0))

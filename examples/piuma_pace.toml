@@ -1,5 +1,5 @@
-# 56 cm road frame in 4130. Load split numbers are percentages and must sum to 100.
-# Fork length is set so the front axle sits on the rear axle height.
+# Piuma Pace v2, ported from the Fusion sketch user parameters. Tubes in 4130.
+# Load split numbers are percentages and must sum to 100.
 
 load_cases = [
     { name = "seated bump", mass = 75.0, bump_g = 5.0, saddle = 60.0, bars = 30.0, pedals = 10.0 },
@@ -8,20 +8,19 @@ load_cases = [
 ]
 
 [geometry]
-stack = 565.0
-reach = 390.0
-bb_drop = 70.0
-chainstay = 410.0
-seat_tube_angle = 73.5
-seat_tube_length = 560.0
-seat_tube_ctc = 520.0
-seatstay_drop = 30.0
-saddle_height = 740.0
-head_tube_angle = 73.0
-head_tube_length = 150.0
-fork_length = 381.37530012677803
-fork_rake = 45.0
-wheel_radius = 340.0
+wheel_diameter = 700.0
+axle_to_crown = 382.0
+fork_offset = 47.0
+head_tube_angle = 70.0
+head_tube = 95.0
+bb_drop = 80.0
+seat_tube_angle = 76.0
+seat_tube = 500.0
+top_tube = 530.0
+chainstay = 420.0
+saddle_height = 690.0
+seatstay_drop = 0.0
+seat_tube_extension = 0.0
 stem_length = 100.0
 stem_angle = -6.0
 spacers = 15.0
