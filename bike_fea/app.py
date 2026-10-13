@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
+    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -39,24 +40,39 @@ from bike_fea.materials import BUILTINS, Material
 from bike_fea.plotting import draw_frame
 from bike_fea.project import EXAMPLE_PATH, example_project, load_project, save_project
 
-GEOMETRY_FIELDS: tuple[tuple[str, str, float, float, int], ...] = (
-    ("stack", "Stack (mm)", 0, 2000, 1),
-    ("reach", "Reach (mm)", 0, 2000, 1),
-    ("bb_drop", "BB drop (mm)", 0, 500, 1),
-    ("chainstay", "Chainstay (mm)", 0, 1000, 1),
-    ("seat_tube_angle", "Seat tube angle (deg)", 1, 179, 2),
-    ("seat_tube_length", "Seat tube length E (mm)", 0, 1500, 1),
-    ("seat_tube_ctc", "Seat tube center-to-center (mm)", 0, 1500, 1),
-    ("seatstay_drop", "Seatstay drop (mm)", 0, 800, 1),
-    ("saddle_height", "Saddle height (mm)", 0, 1500, 1),
-    ("head_tube_angle", "Head tube angle (deg)", 1, 179, 2),
-    ("head_tube_length", "Head tube length (mm)", 0, 500, 1),
-    ("fork_length", "Fork length (mm)", 0, 800, 1),
-    ("fork_rake", "Fork rake (mm)", 0, 150, 1),
-    ("wheel_radius", "Wheel radius (mm)", 0, 500, 1),
-    ("stem_length", "Stem length (mm)", 0, 300, 1),
-    ("stem_angle", "Stem angle, +up (deg)", -80, 80, 1),
-    ("spacers", "Spacers (mm)", 0, 80, 1),
+FRAME_FIELDS: tuple[tuple[str, str, float, float, int], ...] = (
+    ("wheel_diameter", "wheel_diameter (mm)", 0, 1000, 1),
+    ("axle_to_crown", "axle_to_crown (mm)", 0, 800, 1),
+    ("fork_offset", "fork_offset (mm)", 0, 150, 1),
+    ("head_tube_angle", "head_tube_angle (deg)", 1, 179, 2),
+    ("head_tube", "head_tube (mm)", 0, 500, 1),
+    ("bb_drop", "bb_drop (mm)", 0, 500, 1),
+    ("seat_tube_angle", "seat_tube_angle (deg)", 1, 179, 2),
+    ("seat_tube", "seat_tube, c-c (mm)", 0, 1500, 1),
+    ("top_tube", "top_tube, c-c (mm)", 0, 1500, 1),
+    ("chainstay", "chainstay (mm)", 0, 1000, 1),
+    ("saddle_height", "saddle_height (mm)", 0, 1500, 1),
+)
+
+DETAIL_FIELDS: tuple[tuple[str, str, float, float, int], ...] = (
+    ("seatstay_drop", "seatstay_drop (mm)", 0, 800, 1),
+    ("seat_tube_extension", "seat_tube_extension (mm)", 0, 500, 1),
+    ("stem_length", "stem_length (mm)", 0, 300, 1),
+    ("stem_angle", "stem_angle, +up (deg)", -80, 80, 1),
+    ("spacers", "spacers (mm)", 0, 80, 1),
+)
+
+GEOMETRY_FIELDS = FRAME_FIELDS + DETAIL_FIELDS
+
+DERIVED_FIELDS: tuple[tuple[str, str], ...] = (
+    ("stack", "Stack"),
+    ("reach", "Reach"),
+    ("effective_top_tube", "Effective top tube"),
+    ("rear_center", "Rear center"),
+    ("front_center", "Front center"),
+    ("wheelbase", "Wheelbase"),
+    ("trail", "Trail"),
+    ("bb_height", "BB height"),
 )
 
 RESULT_COLUMNS = (
@@ -107,7 +123,7 @@ class MainWindow(QMainWindow):
         tabs.addTab(self._material_tab(), "Material")
         tabs.addTab(self._loads_tab(), "Load cases")
         tabs.addTab(self._settings_tab(), "Settings")
-        tabs.setMinimumWidth(340)
+        tabs.setMinimumWidth(400)
 
         self.figure = Figure(figsize=(7, 5))
         self.canvas = FigureCanvasQTAgg(self.figure)
@@ -121,7 +137,19 @@ class MainWindow(QMainWindow):
         self._case_combo.currentIndexChanged.connect(self._redraw)
         self._deformed.toggled.connect(self._redraw)
 
+        self._solve_button = QPushButton("Solve")
+        self._solve_button.clicked.connect(self._solve_now)
+        self._auto = QCheckBox("Automatic compute")
+        self._auto.setChecked(True)
+        self._auto.toggled.connect(self._on_auto_toggled)
+        self._stale = QLabel("")
+        self._stale.setStyleSheet("color: #c0392b;")
+
         tools = QHBoxLayout()
+        tools.addWidget(self._solve_button)
+        tools.addWidget(self._auto)
+        tools.addWidget(self._stale)
+        tools.addSpacing(16)
         tools.addWidget(QLabel("Color"))
         tools.addWidget(self._color_combo)
         tools.addWidget(QLabel("Case"))
@@ -149,6 +177,7 @@ class MainWindow(QMainWindow):
         splitter.addWidget(center)
         splitter.addWidget(self._results)
         splitter.setStretchFactor(1, 1)
+        splitter.setSizes([420, 560, 420])
 
         outer = QVBoxLayout()
         outer.addWidget(splitter, stretch=1)
@@ -158,17 +187,35 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(holder)
 
     def _geometry_tab(self) -> QWidget:
-        form = QFormLayout()
-        for key, label, low, high, decimals in GEOMETRY_FIELDS:
-            spin = QDoubleSpinBox()
-            spin.setRange(low, high)
-            spin.setDecimals(decimals)
-            spin.setSingleStep(1 if decimals == 1 else 0.1)
-            spin.valueChanged.connect(self._schedule)
-            self._geometry_spins[key] = spin
-            form.addRow(label, spin)
+        layout = QVBoxLayout()
+        for title, group_fields in (("Frame", FRAME_FIELDS), ("Cockpit and details", DETAIL_FIELDS)):
+            form = QFormLayout()
+            for key, label, low, high, decimals in group_fields:
+                spin = QDoubleSpinBox()
+                spin.setRange(low, high)
+                spin.setDecimals(decimals)
+                spin.setSingleStep(1 if decimals == 1 else 0.1)
+                spin.valueChanged.connect(self._schedule)
+                self._geometry_spins[key] = spin
+                form.addRow(label, spin)
+            box = QGroupBox(title)
+            box.setLayout(form)
+            layout.addWidget(box)
+
+        derived_form = QFormLayout()
+        self._derived_labels: dict[str, QLabel] = {}
+        for key, label in DERIVED_FIELDS:
+            value = QLabel("–")
+            value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            self._derived_labels[key] = value
+            derived_form.addRow(label, value)
+        derived_box = QGroupBox("Derived (read-only)")
+        derived_box.setLayout(derived_form)
+        layout.addWidget(derived_box)
+        layout.addStretch(1)
+
         holder = QWidget()
-        holder.setLayout(form)
+        holder.setLayout(layout)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(holder)
@@ -289,8 +336,20 @@ class MainWindow(QMainWindow):
         self._resolve()
 
     def _schedule(self) -> None:
-        if not self._filling:
+        if self._filling:
+            return
+        if self._auto.isChecked():
             self._timer.start()
+        else:
+            self._stale.setText("Inputs changed. Press Solve.")
+
+    def _solve_now(self) -> None:
+        self._timer.stop()
+        self._resolve()
+
+    def _on_auto_toggled(self, checked: bool) -> None:
+        if checked and self._stale.text():
+            self._solve_now()
 
     def _on_material_changed(self) -> None:
         custom = self._material_combo.currentText() == "Custom"
@@ -326,6 +385,7 @@ class MainWindow(QMainWindow):
             self._schedule()
 
     def _resolve(self) -> None:
+        self._stale.setText("")
         try:
             project = self._read_project()
         except ValueError as exc:
@@ -436,11 +496,11 @@ class MainWindow(QMainWindow):
 
     def _fill_status(self, geometry, analysis: Analysis | None, warning: str | None) -> None:
         derived = geometry.derived
+        for key, label in self._derived_labels.items():
+            label.setText(f"{getattr(derived, key):.1f} mm")
         lines = [
-            f"ETT {derived.effective_top_tube:.0f} mm    "
-            f"wheelbase {derived.wheelbase:.0f} mm    "
-            f"front center {derived.front_center:.0f} mm    "
-            f"trail {derived.trail:.1f} mm"
+            f"stack {derived.stack:.1f} mm    reach {derived.reach:.1f} mm    "
+            f"wheelbase {derived.wheelbase:.1f} mm    trail {derived.trail:.1f} mm"
         ]
         if analysis is not None:
             selected = self._case_name()
@@ -453,8 +513,6 @@ class MainWindow(QMainWindow):
                 lines.append(
                     f"  BB {case.bb_deflection:.2f} mm    bars vs front axle {case.bar_deflection:.2f} mm"
                 )
-        if geometry.warnings:
-            lines.extend(geometry.warnings)
         if warning:
             lines.append(warning)
         self._status.setPlainText("\n".join(lines))

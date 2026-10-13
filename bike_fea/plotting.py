@@ -80,7 +80,7 @@ def draw_frame(
 
 def _fit(ax, nodes: dict[str, np.ndarray]) -> None:
     pts = np.vstack(list(nodes.values()))
-    margin = 55.0
+    margin = 75.0
     ax.set_xlim(float(pts[:, 0].min()) - margin, float(pts[:, 0].max()) + margin)
     ax.set_ylim(float(pts[:, 1].min()) - margin - 80.0, float(pts[:, 1].max()) + margin)
 
@@ -198,14 +198,17 @@ def _label_nodes(ax, nodes: dict[str, np.ndarray]) -> None:
         "rear_axle": np.array([-16.0, 8.0]),
         "front_axle": np.array([8.0, -16.0]),
     }
-    skip_k = False
-    if "top_tube_junction" in nodes and "seatstay_junction" in nodes:
-        gap = float(np.linalg.norm(nodes["top_tube_junction"] - nodes["seatstay_junction"]))
-        skip_k = gap < 8.0
+    merged = [
+        name
+        for name in ("seatstay_junction", "seat_tube_top")
+        if name in nodes and float(np.linalg.norm(nodes[name] - nodes["top_tube_junction"])) < 8.0
+    ]
     for name, xy in nodes.items():
-        if name not in shown or (name == "seatstay_junction" and skip_k):
+        if name not in shown or name in merged:
             continue
-        label = "J/K" if name == "top_tube_junction" and skip_k else NODE_LABELS[name]
+        label = NODE_LABELS[name]
+        if name == "top_tube_junction" and merged:
+            label = "/".join([label, *(NODE_LABELS[item] for item in merged)])
         ax.annotate(label, xy, xytext=xy + offsets[name], fontsize=8, ha="center", va="center")
 
 
